@@ -76,7 +76,7 @@ if 'label_encoders' not in st.session_state:
 # ----------------------------
 @st.cache_resource
 def load_data_and_model():
-    csv_path = "final_database.csv"
+    csv_path = "final_dataset.csv"
     if not os.path.exists(csv_path):
         st.error(f"❌ CSV file '{csv_path}' not found.")
         return None, None, [], None, {}
