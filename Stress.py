@@ -104,7 +104,7 @@ if 'label_encoders' not in st.session_state:
 @st.cache_resource
 def load_data_and_model():
     # Load CSV
-    csv_path = "personnel_data.csv"
+    csv_path = "final_dataset.csv"
     if not os.path.exists(csv_path):
         st.error(f"❌ CSV file '{csv_path}' not found. Please place it in the same directory.")
         return None, None, [], None, {}
@@ -112,7 +112,7 @@ def load_data_and_model():
     df = pd.read_csv(csv_path)
 
     # Load model
-    model_path = "model.pkl"
+    model_path = "stress_risk_metadata_v3.pkl"
     if not os.path.exists(model_path):
         st.error(f"❌ Model file '{model_path}' not found. Please place it in the same directory.")
         return df, None, [], None, {}
