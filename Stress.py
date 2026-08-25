@@ -21,27 +21,14 @@ st.set_page_config(
 # ----------------------------
 st.markdown("""
 <style>
-    /* Main background */
-    .stApp {
-        background-color: #f8f9fa;
-    }
-    /* Sidebar styling */
-    .css-1d391kg {
-        background-color: #ffffff;
-        border-right: 1px solid #e0e0e0;
-    }
-    /* Cards */
+    .stApp { background-color: #f8f9fa; }
+    .css-1d391kg { background-color: #ffffff; border-right: 1px solid #e0e0e0; }
     .card {
         background-color: #ffffff;
         padding: 20px;
         border-radius: 10px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         margin-bottom: 20px;
-    }
-    .card-title {
-        font-size: 24px;
-        font-weight: bold;
-        color: #2c3e50;
     }
     .stat-number {
         font-size: 36px;
@@ -52,7 +39,6 @@ st.markdown("""
         font-size: 16px;
         color: #7f8c8d;
     }
-    /* Buttons */
     .stButton>button {
         background-color: #2980b9;
         color: white;
@@ -66,24 +52,11 @@ st.markdown("""
         background-color: #1f618d;
         color: white;
     }
-    /* Dataframe */
-    .dataframe {
-        border-radius: 10px;
-        overflow: hidden;
-    }
-    /* Sidebar headers */
-    .sidebar-header {
-        font-size: 20px;
-        font-weight: bold;
-        color: #2c3e50;
-        margin-top: 20px;
-        margin-bottom: 10px;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # ----------------------------
-# SESSION STATE INITIALIZATION
+# SESSION STATE
 # ----------------------------
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
@@ -103,29 +76,27 @@ if 'label_encoders' not in st.session_state:
 # ----------------------------
 @st.cache_resource
 def load_data_and_model():
-    # Load CSV
-    csv_path = "final_dataset.csv"
+    csv_path = "final_database.csv"
     if not os.path.exists(csv_path):
-        st.error(f"❌ CSV file '{csv_path}' not found. Please place it in the same directory.")
+        st.error(f"❌ CSV file '{csv_path}' not found.")
         return None, None, [], None, {}
 
     df = pd.read_csv(csv_path)
 
-    # Load model
     model_path = "stress_risk_metadata_v3.pkl"
     if not os.path.exists(model_path):
-        st.error(f"❌ Model file '{model_path}' not found. Please place it in the same directory.")
+        st.error(f"❌ Model file '{model_path}' not found.")
         return df, None, [], None, {}
 
     with open(model_path, "rb") as f:
         model = pickle.load(f)
 
-    # Auto-detect target (last column) and features
+    # Assume last column is the target
     all_cols = df.columns.tolist()
-    target = all_cols[-1]   # assume last column is target
+    target = all_cols[-1]
     features = [col for col in all_cols if col != target]
 
-    # Encode categorical features
+    # Encode categorical features (but NOT the target)
     label_encoders = {}
     for col in features:
         if df[col].dtype == 'object':
@@ -146,7 +117,6 @@ def login():
         password = st.text_input("Password", type="password", placeholder="Enter your password")
         submitted = st.form_submit_button("Login", use_container_width=True)
         if submitted:
-            # Hardcoded credentials (replace with your own)
             if username == "admin" and password == "admin123":
                 st.session_state.logged_in = True
                 st.rerun()
@@ -163,8 +133,11 @@ def dashboard():
         st.warning("⚠️ Data not loaded. Check that 'personnel_data.csv' exists.")
         return
 
-    # Top metrics
+    target = st.session_state.target_column
+
+    # --- Metrics ---
     col1, col2, col3 = st.columns(3)
+
     with col1:
         st.markdown(f"""
         <div class="card">
@@ -172,36 +145,51 @@ def dashboard():
             <div class="stat-number">{df.shape[0]}</div>
         </div>
         """, unsafe_allow_html=True)
+
     with col2:
         st.markdown(f"""
         <div class="card">
             <div class="metric-label">Features</div>
-            <div class="stat-number">{df.shape[1]-1}</div>
+            <div class="stat-number">{df.shape[1] - 1}</div>
         </div>
         """, unsafe_allow_html=True)
+
     with col3:
-        target = st.session_state.target_column
+        # Safely show target statistic
         if target and target in df.columns:
-            avg = df[target].mean()
+            if pd.api.types.is_numeric_dtype(df[target]):
+                avg = df[target].mean()
+                display_text = f"{avg:.2f}"
+                label = f"Avg {target}"
+            else:
+                # For categorical target, show the most frequent value
+                mode_val = df[target].mode()[0]
+                display_text = str(mode_val)
+                label = f"Most frequent {target}"
             st.markdown(f"""
             <div class="card">
-                <div class="metric-label">Avg {target}</div>
-                <div class="stat-number">{avg:.2f}</div>
+                <div class="metric-label">{label}</div>
+                <div class="stat-number">{display_text}</div>
             </div>
             """, unsafe_allow_html=True)
 
-    # Data preview
+    # --- Data preview ---
     st.subheader("📋 Data Preview")
     st.dataframe(df.head(10), use_container_width=True)
 
-    # Visualizations
+    # --- Visualizations ---
     st.subheader("📈 Distributions")
-    cols = st.multiselect("Select columns to visualize", df.columns, default=df.columns[:2])
-    if cols:
-        for col in cols:
-            fig = px.histogram(df, x=col, title=f"Distribution of {col}", color_discrete_sequence=['#2980b9'])
-            fig.update_layout(bargap=0.1)
-            st.plotly_chart(fig, use_container_width=True)
+    # Only show numeric columns for histograms, or all if you prefer
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    if numeric_cols:
+        cols = st.multiselect("Select columns to visualize", numeric_cols, default=numeric_cols[:2])
+        if cols:
+            for col in cols:
+                fig = px.histogram(df, x=col, title=f"Distribution of {col}", color_discrete_sequence=['#2980b9'])
+                fig.update_layout(bargap=0.1)
+                st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("No numeric columns available for histograms.")
 
 # ----------------------------
 # PAGE: PERSONNEL SCORE
@@ -232,8 +220,6 @@ def personnel_score():
     with st.form("manual_prediction"):
         inputs = {}
         for col in features:
-            # if categorical, show selectbox with original values (but we only have encoded)
-            # For simplicity, we'll use number inputs
             inputs[col] = st.number_input(f"{col}", value=float(df[col].mean()))
         submitted = st.form_submit_button("🔮 Predict")
         if submitted:
@@ -262,7 +248,6 @@ def add_personnel():
         for i, col in enumerate(features):
             with cols[i % 2]:
                 if col in st.session_state.label_encoders:
-                    # show a text input; we'll handle encoding later
                     new_data[col] = st.text_input(f"{col}", placeholder="Enter value")
                 else:
                     new_data[col] = st.number_input(f"{col}", value=0.0, step=0.1)
@@ -271,13 +256,11 @@ def add_personnel():
         submitted = st.form_submit_button("➕ Add Personnel", use_container_width=True)
 
         if submitted:
-            # Build new row
             new_row = {}
             for col in features:
                 val = new_data[col]
                 if col in st.session_state.label_encoders:
                     le = st.session_state.label_encoders[col]
-                    # if value is empty, use most frequent
                     if val == "" or val is None:
                         val = le.classes_[0]
                         st.info(f"Using default '{val}' for {col}")
@@ -302,10 +285,8 @@ def add_personnel():
                 else:
                     new_row[target] = 0.0
 
-            # Append
             df_new = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
             st.session_state.df = df_new
-            # Save back to CSV
             df_new.to_csv("personnel_data.csv", index=False)
             st.success("✅ Personnel added successfully!")
             st.rerun()
@@ -318,7 +299,7 @@ def main():
         login()
         return
 
-    # Load data (cached)
+    # Load data if not already loaded
     if st.session_state.df is None:
         df, model, features, target, le = load_data_and_model()
         if df is not None:
@@ -328,17 +309,15 @@ def main():
             st.session_state.target_column = target
             st.session_state.label_encoders = le
 
-    # Sidebar navigation
+    # Sidebar
     st.sidebar.image("https://img.icons8.com/fluency/96/000000/user-group-man-man.png", width=80)
     st.sidebar.title("Navigation")
     page = st.sidebar.radio("Go to", ["Dashboard", "Personnel Score", "Add Personnel"], index=0)
 
-    # Logout button
     if st.sidebar.button("🚪 Logout", use_container_width=True):
         st.session_state.logged_in = False
         st.rerun()
 
-    # Page routing
     if page == "Dashboard":
         dashboard()
     elif page == "Personnel Score":
